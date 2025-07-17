@@ -48,9 +48,7 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-white p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary rounded-lg flex items-center justify-center mb-4">
-            <FileText className="w-6 h-6 text-primary-foreground" />
-          </div>
+        <img src='/logo.png' className="mx-auto w-100 rounded-lg flex items-center justify-center mb-4" />
           <CardTitle className="text-2xl font-bold text-foreground">Admin Portal</CardTitle>
           <CardDescription>
             Sign in to access the document repository
@@ -87,7 +85,7 @@ const Login: React.FC = () => {
             </Button>
           </form>
           
-          <div className="mt-6 p-4 bg-muted rounded-lg">
+          {/* <div className="mt-6 p-4 bg-muted rounded-lg">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               <div className="text-sm text-muted-foreground">
@@ -95,7 +93,7 @@ const Login: React.FC = () => {
                 <p>This portal is restricted to authorized administrators. Please contact your system administrator if you need access.</p>
               </div>
             </div>
-          </div>
+          </div> */}
         </CardContent>
       </Card>
     </div>

@@ -56,12 +56,10 @@ export function AppSidebar() {
       <SidebarContent className="bg-white border-r border-border">
         <div className="p-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <FileText className="w-4 h-4 text-primary-foreground" />
-            </div>
+            <img src='/tick.png' className="w-8 h-8 rounded-lg flex items-center justify-center" />
             {!collapsed && (
               <div>
-                <h2 className="text-lg font-semibold text-foreground">DocRepo</h2>
+                <h2 className="text-lg font-semibold text-foreground">YSL Sales Repository</h2>
                 <p className="text-xs text-muted-foreground">Admin Portal</p>
               </div>
             )}
