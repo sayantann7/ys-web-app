@@ -19,18 +19,16 @@ import {
   FileText,
   BarChart3,
   MessageSquare,
-  Clock,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 const navigationItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
-  { title: 'Users', url: '/users', icon: Users },
   { title: 'Documents', url: '/documents', icon: FileText },
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
   { title: 'Comments', url: '/comments', icon: MessageSquare },
-  { title: 'Recent Activity', url: '/recent', icon: Clock },
+  { title: 'Users', url: '/users', icon: Users },
 ];
 
 export function AppSidebar() {

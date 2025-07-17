@@ -10,6 +10,9 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { AppSidebar } from "@/components/Sidebar";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
+import Documents from "@/pages/Documents";
+import Analytics from "@/pages/Analytics";
+import Comments from "@/pages/Comments";
 import Users from "@/pages/Users";
 import NotFound from "@/pages/NotFound";
 
@@ -42,6 +45,9 @@ const App = () => {
                           <main className="flex-1 overflow-auto">
                             <Routes>
                               <Route path="/" element={<Dashboard />} />
+                              <Route path="/documents" element={<Documents />} />
+                              <Route path="/analytics" element={<Analytics />} />
+                              <Route path="/comments" element={<Comments />} />
                               <Route path="/users" element={<Users />} />
                               <Route path="*" element={<NotFound />} />
                             </Routes>
