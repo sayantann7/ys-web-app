@@ -26,6 +26,7 @@ import { useAuth } from '@/context/AuthContext';
 const navigationItems = [
   { title: 'Dashboard', url: '/', icon: LayoutDashboard },
   { title: 'Documents', url: '/documents', icon: FileText },
+  { title: 'Bookmarked', url: '/bookmarked', icon: FileText },
   { title: 'Analytics', url: '/analytics', icon: BarChart3 },
   { title: 'Comments', url: '/comments', icon: MessageSquare },
   { title: 'Users', url: '/users', icon: Users },
@@ -70,7 +71,10 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navigationItems.map((item) => (
+              {(user.role === 'admin'
+                ? navigationItems
+                : navigationItems.filter(item => item.title === 'Documents' || item.title === 'Bookmarked')
+              ).map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild>
                     <NavLink
