@@ -153,6 +153,68 @@ class ApiService {
     });
   }
 
+  async uploadFolderIcon(file: File, folderPath: string): Promise<{ message: string; iconUrl: string }> {
+    console.log('uploadFolderIcon called with:', { fileName: file.name, folderPath });
+    
+    // First, get the upload URL from the backend
+    const uploadResponse = await this.request<{ uploadUrl: string }>('/api/icons/upload', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        itemPath: folderPath, 
+        iconType: file.type.includes('png') ? 'png' : 'jpeg' 
+      }),
+    });
+    
+    console.log('Upload URL response:', uploadResponse);
+    
+    if (!uploadResponse.uploadUrl) {
+      throw new Error('No upload URL received from server');
+    }
+    
+    // Now upload the file to the received URL
+    const uploadResult = await fetch(uploadResponse.uploadUrl, {
+      method: 'PUT',
+      body: file,
+      headers: {
+        'Content-Type': file.type,
+      },
+    });
+    
+    if (!uploadResult.ok) {
+      const error = await uploadResult.text();
+      console.error('File upload failed:', error);
+      throw new Error('File upload failed');
+    }
+    
+    console.log('File uploaded successfully');
+    
+    // Return success - the icon URL will be retrieved separately by getFolderIcon
+    return { 
+      message: 'Icon uploaded successfully', 
+      iconUrl: '' // Will be populated when getFolderIcon is called
+    };
+  }
+
+  async getFolderIcon(folderPath: string): Promise<{ iconUrl?: string }> {
+    try {
+      console.log('getFolderIcon called with path:', folderPath);
+      const encodedPath = encodeURIComponent(folderPath);
+      const url = `/api/icons/${encodedPath}`;
+      console.log('Fetching from URL:', `${API_BASE}${url}`);
+      
+      const result = await this.request(url);
+      console.log('getFolderIcon result:', result);
+      return result;
+    } catch (error) {
+      console.log('getFolderIcon error:', error);
+      // If it's a 404, that's expected for folders without icons
+      if (error instanceof Error && error.message.includes('404')) {
+        return { iconUrl: undefined };
+      }
+      return { iconUrl: undefined };
+    }
+  }
+
   async getFileUrl(key: string): Promise<{ url: string }> {
     return this.request('/api/files/fetch', {
       method: 'POST',
@@ -164,6 +226,13 @@ class ApiService {
     return this.request('/api/files/upload', {
       method: 'POST',
       body: JSON.stringify({ key }),
+    });
+  }
+
+  async deleteDocument(key: string): Promise<{ message: string }> {
+    return this.request('/api/files/delete', {
+      method: 'DELETE',
+      body: JSON.stringify({ filePath: key }),
     });
   }
 }

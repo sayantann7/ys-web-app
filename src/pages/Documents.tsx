@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
@@ -19,13 +20,20 @@ import {
   FolderPlus,
   Eye,
   X,
-  ExternalLink
+  ExternalLink,
+  MoreVertical,
+  Trash2,
+  Bookmark,
+  BookmarkCheck,
+  Image
 } from 'lucide-react';
 
 interface DocumentItem {
   name: string;
   type: 'folder' | 'file';
   key: string;
+  isBookmarked?: boolean;
+  iconUrl?: string;
 }
 
 const Documents = () => {
@@ -35,6 +43,7 @@ const Documents = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [newFolderName, setNewFolderName] = useState('');
+  const [newFolderIcon, setNewFolderIcon] = useState<File | null>(null);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<{
     name: string;
@@ -42,12 +51,133 @@ const Documents = () => {
     url: string;
   } | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
+  const [uploadingFolder, setUploadingFolder] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
     loadDocuments();
   }, [currentPath]);
+
+  const formatDisplayName = (name: string): string => {
+    // Remove trailing slash if it exists
+    let formatted = name.replace(/\/$/, '');
+    
+    // Split by hyphens and underscores, then capitalize each word
+    formatted = formatted
+      .split(/[-_]/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+    
+    return formatted;
+  };
+
+  const loadFolderIcons = async (documentItems: DocumentItem[]) => {
+    const folders = documentItems.filter(item => item.type === 'folder');
+    console.log('loadFolderIcons called with folders:', folders);
+    
+    // Add a small delay to ensure documents are rendered before loading icons
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    for (const folder of folders) {
+      try {
+        console.log('Processing folder:', folder.key, 'currentPath:', currentPath);
+        
+        // Based on the S3 screenshot, the icon is stored as "vrseSha_icon.jpeg"
+        // This suggests the backend might be using the original folder name, not the formatted one
+        // Try multiple path variations to find the correct one
+        const pathVariations = [
+          folder.key, // Just the folder name
+          `${folder.key}/`, // Folder name with trailing slash
+          currentPath ? `${currentPath}/${folder.key}/` : `${folder.key}/`, // Full path
+          currentPath ? `${currentPath}${folder.key}/` : `${folder.key}/`, // Full path without separator
+          // Try with the formatted name converted back to original
+          folder.name.toLowerCase().replace(/\s+/g, ''), // Remove spaces and lowercase
+          folder.name.toLowerCase().replace(/\s+/g, '') + '/', // With trailing slash
+        ];
+        
+        console.log('Trying path variations for folder:', folder.key, pathVariations);
+        
+        let iconFound = false;
+        for (const folderPath of pathVariations) {
+          try {
+            console.log(`Trying icon path: ${folderPath}`);
+            const iconResponse = await apiService.getFolderIcon(folderPath);
+            console.log(`Icon response for path ${folderPath}:`, iconResponse);
+            
+            if (iconResponse && iconResponse.iconUrl) {
+              console.log(`Found icon for folder ${folder.key} at path ${folderPath}: ${iconResponse.iconUrl}`);
+              setDocuments(prevDocs => {
+                const updatedDocs = prevDocs.map(doc => 
+                  doc.key === folder.key && doc.type === 'folder'
+                    ? { ...doc, iconUrl: iconResponse.iconUrl }
+                    : doc
+                );
+                console.log('Updated documents with icon for folder:', folder.key);
+                return updatedDocs;
+              });
+              iconFound = true;
+              break;
+            }
+          } catch (pathError) {
+            console.log(`Path ${folderPath} failed:`, pathError);
+          }
+        }
+        
+        if (!iconFound) {
+          console.log(`No icon found for folder ${folder.key} with any path variation`);
+        }
+        
+      } catch (error) {
+        console.error(`Error loading icon for folder ${folder.key}:`, error);
+      }
+    }
+  };
+
+  // Manual refresh function for debugging
+  const refreshIcons = async () => {
+    console.log('Manually refreshing icons...');
+    console.log('Current documents:', documents);
+    
+    // Try to load icon for the specific folder we can see in the screenshot
+    const vrseShaFolder = documents.find(doc => doc.type === 'folder' && doc.key.toLowerCase().includes('vrse5ha'));
+    if (vrseShaFolder) {
+      console.log('Found vrseSha folder:', vrseShaFolder);
+      
+      // Try the exact path that would match the S3 object
+      const testPaths = [
+        'vrseSha/',
+        'Vrse5ha/',
+        'vrse5ha/',
+        vrseShaFolder.key,
+        `${vrseShaFolder.key}/`,
+      ];
+      
+      for (const testPath of testPaths) {
+        try {
+          console.log(`Testing path: ${testPath}`);
+          const iconResponse = await apiService.getFolderIcon(testPath);
+          console.log(`Response for ${testPath}:`, iconResponse);
+          
+          if (iconResponse && iconResponse.iconUrl) {
+            console.log(`SUCCESS! Found icon at path: ${testPath}`);
+            setDocuments(prevDocs => 
+              prevDocs.map(doc => 
+                doc.key === vrseShaFolder.key && doc.type === 'folder'
+                  ? { ...doc, iconUrl: iconResponse.iconUrl }
+                  : doc
+              )
+            );
+            break;
+          }
+        } catch (error) {
+          console.log(`Failed for path ${testPath}:`, error);
+        }
+      }
+    }
+    
+    await loadFolderIcons(documents);
+  };
 
   const loadDocuments = async () => {
     try {
@@ -88,67 +218,87 @@ const Documents = () => {
       console.log('Folders type check:', Array.isArray(folders), folders);
       console.log('Files type check:', Array.isArray(files), files);
       
+      // Load bookmark state from localStorage
+      const bookmarks = JSON.parse(localStorage.getItem('documentBookmarks') || '{}');
+      
       const documentItems: DocumentItem[] = [
-        ...folders.map((folder, index) => {
-          console.log(`Folder ${index}:`, folder, typeof folder);
-          console.log(`Folder ${index} keys:`, typeof folder === 'object' && folder ? Object.keys(folder) : 'N/A');
-          
-          // Handle both string and object cases with better extraction
-          let folderName = '';
-          let folderKey = '';
-          
-          if (typeof folder === 'string') {
-            folderName = folder;
-            folderKey = folder;
-          } else if (folder && typeof folder === 'object') {
-            // Try different possible property names for the display name
-            folderName = (folder as any)?.name || 
-                        (folder as any)?.Key || 
-                        (folder as any)?.key || 
-                        (folder as any)?.fileName || 
-                        (folder as any)?.folderName ||
-                        (folder as any)?.Prefix ||
-                        (folder as any)?.prefix;
+        ...folders
+          .filter(folder => {
+            // Filter out the icons folder
+            if (typeof folder === 'string') {
+              return !folder.toLowerCase().includes('icons');
+            } else if (folder && typeof folder === 'object') {
+              const folderName = (folder as any)?.name || 
+                              (folder as any)?.Key || 
+                              (folder as any)?.key || 
+                              (folder as any)?.Prefix ||
+                              (folder as any)?.prefix || '';
+              return !folderName.toLowerCase().includes('icons');
+            }
+            return true;
+          })
+          .map((folder, index) => {
+            console.log(`Folder ${index}:`, folder, typeof folder);
+            console.log(`Folder ${index} keys:`, typeof folder === 'object' && folder ? Object.keys(folder) : 'N/A');
             
-            // For the key, use the full path if available
-            folderKey = (folder as any)?.Key || 
-                       (folder as any)?.key || 
-                       (folder as any)?.Prefix ||
-                       (folder as any)?.prefix ||
-                       folderName;
+            // Handle both string and object cases with better extraction
+            let folderName = '';
+            let folderKey = '';
             
-            // If still no valid name found, try to extract from the object
-            if (!folderName) {
-              const keys = Object.keys(folder);
-              if (keys.length > 0) {
-                folderName = (folder as any)[keys[0]];
+            if (typeof folder === 'string') {
+              folderName = folder;
+              folderKey = folder;
+            } else if (folder && typeof folder === 'object') {
+              // Try different possible property names for the display name
+              folderName = (folder as any)?.name || 
+                          (folder as any)?.Key || 
+                          (folder as any)?.key || 
+                          (folder as any)?.fileName || 
+                          (folder as any)?.folderName ||
+                          (folder as any)?.Prefix ||
+                          (folder as any)?.prefix;
+              
+              // For the key, use the full path if available
+              folderKey = (folder as any)?.Key || 
+                         (folder as any)?.key || 
+                         (folder as any)?.Prefix ||
+                         (folder as any)?.prefix ||
+                         folderName;
+              
+              // If still no valid name found, try to extract from the object
+              if (!folderName) {
+                const keys = Object.keys(folder);
+                if (keys.length > 0) {
+                  folderName = (folder as any)[keys[0]];
+                  folderKey = folderName;
+                }
+              }
+              
+              // Extract just the folder name from the full path for display
+              if (folderName && folderName.includes('/')) {
+                folderName = folderName.split('/').pop() || folderName;
+              }
+              
+              // Last resort - convert to string but avoid [object Object]
+              if (!folderName || typeof folderName !== 'string') {
+                folderName = `folder_${index}`;
                 folderKey = folderName;
               }
-            }
-            
-            // Extract just the folder name from the full path for display
-            if (folderName && folderName.includes('/')) {
-              folderName = folderName.split('/').pop() || folderName;
-            }
-            
-            // Last resort - convert to string but avoid [object Object]
-            if (!folderName || typeof folderName !== 'string') {
-              folderName = `folder_${index}`;
+            } else {
+              folderName = `unknown_folder_${index}`;
               folderKey = folderName;
             }
-          } else {
-            folderName = `unknown_folder_${index}`;
-            folderKey = folderName;
-          }
-          
-          console.log(`Extracted folder name: "${folderName}", key: "${folderKey}"`);
-          
-          return {
-            name: folderName,
-            type: 'folder' as const,
-            key: folderKey
-          };
-        }),
+            
+            console.log(`Extracted folder name: "${folderName}", key: "${folderKey}"`);
+            
+            return {
+              name: formatDisplayName(folderName),
+              type: 'folder' as const,
+              key: folderKey,
+              isBookmarked: !!bookmarks[folderKey],
+              iconUrl: undefined // Will be loaded separately
+            };
+          }),
         ...files.map((file, index) => {
           console.log(`File ${index}:`, file, typeof file);
           console.log(`File ${index} keys:`, typeof file === 'object' && file ? Object.keys(file) : 'N/A');
@@ -204,9 +354,11 @@ const Documents = () => {
           console.log(`Extracted file name: "${fileName}", key: "${fileKey}"`);
           
           return {
-            name: fileName,
+            name: formatDisplayName(fileName),
             type: 'file' as const,
-            key: fileKey
+            key: fileKey,
+            isBookmarked: !!bookmarks[fileKey],
+            iconUrl: undefined
           };
         })
       ];
@@ -231,6 +383,9 @@ const Documents = () => {
       
       console.log('Valid Document Items:', validDocumentItems);
       setDocuments(validDocumentItems);
+      
+      // Load folder icons after setting documents
+      loadFolderIcons(validDocumentItems);
     } catch (error) {
       console.error('Error loading documents:', error);
       console.error('Error details:', {
@@ -443,20 +598,114 @@ const Documents = () => {
   const createFolder = async () => {
     if (!newFolderName.trim()) return;
     
+    setUploadingFolder(true);
+    
     try {
+      // Create the folder first
       await apiService.createFolder(newFolderName, currentPath || undefined);
+      
+      // If an icon was selected, upload it
+      if (newFolderIcon) {
+        const folderPath = currentPath ? `${currentPath}/${newFolderName}/` : `${newFolderName}/`;
+        console.log('Creating folder with path for icon:', folderPath);
+        await apiService.uploadFolderIcon(newFolderIcon, folderPath);
+      }
+      
       setNewFolderName('');
+      setNewFolderIcon(null);
       setShowCreateFolder(false);
-      loadDocuments();
+      
+      // Reload documents to include the new folder
+      await loadDocuments();
       
       toast({
         title: "Folder created",
-        description: `Successfully created folder "${newFolderName}"`
+        description: `Successfully created folder "${newFolderName}"${newFolderIcon ? ' with icon' : ''}`
       });
     } catch (error) {
+      console.error('Error creating folder:', error);
       toast({
         title: "Failed to create folder",
         description: "Could not create the folder",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingFolder(false);
+    }
+  };
+
+  const handleBookmark = async (docKey: string, docName: string) => {
+    try {
+      // Find the document in the current state
+      const docIndex = documents.findIndex(doc => doc.key === docKey);
+      if (docIndex === -1) return;
+      
+      const currentDoc = documents[docIndex];
+      const isCurrentlyBookmarked = currentDoc.isBookmarked;
+      
+      // Update the local state optimistically
+      const updatedDocuments = [...documents];
+      updatedDocuments[docIndex] = {
+        ...currentDoc,
+        isBookmarked: !isCurrentlyBookmarked
+      };
+      setDocuments(updatedDocuments);
+      
+      // In a real app, you'd make an API call here to persist the bookmark state
+      // For now, we'll just simulate it and store in localStorage
+      const bookmarks = JSON.parse(localStorage.getItem('documentBookmarks') || '{}');
+      if (!isCurrentlyBookmarked) {
+        bookmarks[docKey] = { name: docName, key: docKey, bookmarkedAt: new Date().toISOString() };
+      } else {
+        delete bookmarks[docKey];
+      }
+      localStorage.setItem('documentBookmarks', JSON.stringify(bookmarks));
+      
+      toast({
+        title: isCurrentlyBookmarked ? "Removed bookmark" : "Added bookmark",
+        description: `${docName} ${isCurrentlyBookmarked ? 'removed from' : 'added to'} bookmarks`
+      });
+    } catch (error) {
+      console.error('Error toggling bookmark:', error);
+      toast({
+        title: "Bookmark error",
+        description: "Failed to update bookmark",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDelete = async (docKey: string, docName: string) => {
+    if (!confirm(`Are you sure you want to delete "${docName}"? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      console.log('Deleting file with key:', docKey);
+      
+      // Call the API to delete the document from the backend
+      await apiService.deleteDocument(docKey);
+      
+      // Update local state only after successful deletion
+      const updatedDocuments = documents.filter(doc => doc.key !== docKey);
+      setDocuments(updatedDocuments);
+      
+      // Also remove from bookmarks if it was bookmarked
+      const bookmarks = JSON.parse(localStorage.getItem('documentBookmarks') || '{}');
+      if (bookmarks[docKey]) {
+        delete bookmarks[docKey];
+        localStorage.setItem('documentBookmarks', JSON.stringify(bookmarks));
+      }
+      
+      toast({
+        title: "Document deleted",
+        description: `Successfully deleted "${docName}"`
+      });
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      toast({
+        title: "Delete failed",
+        description: "Failed to delete the document from the server",
         variant: "destructive"
       });
     }
@@ -525,7 +774,7 @@ const Documents = () => {
                     size="sm"
                     onClick={() => navigateToFolder(pathSegments.slice(0, index + 1).join('/'))}
                   >
-                    {segment}
+                    {formatDisplayName(segment)}
                   </Button>
                 </React.Fragment>
               ))}
@@ -540,27 +789,62 @@ const Documents = () => {
                 <FolderPlus className="h-4 w-4 mr-1" />
                 New Folder
               </Button>
+              {/* Debug button for icon refresh */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshIcons}
+                className="text-xs"
+              >
+                Refresh Icons
+              </Button>
             </div>
           </div>
           
           {showCreateFolder && (
-            <div className="mt-4 flex items-center space-x-2">
-              <Input
-                placeholder="Folder name"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                className="max-w-xs"
-              />
-              <Button onClick={createFolder} size="sm">
-                Create
-              </Button>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setShowCreateFolder(false)}
-              >
-                Cancel
-              </Button>
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center space-x-2">
+                <Input
+                  placeholder="Folder name"
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  className="max-w-xs"
+                />
+                <Button onClick={createFolder} size="sm" disabled={uploadingFolder}>
+                  {uploadingFolder ? 'Creating...' : 'Create'}
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setShowCreateFolder(false);
+                    setNewFolderName('');
+                    setNewFolderIcon(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Optional: Choose folder icon
+                </label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    setNewFolderIcon(file || null);
+                  }}
+                  className="max-w-xs"
+                />
+                {newFolderIcon && (
+                  <span className="text-sm text-green-600">
+                    Icon selected: {newFolderIcon.name}
+                  </span>
+                )}
+              </div>
             </div>
           )}
         </CardContent>
@@ -591,22 +875,87 @@ const Documents = () => {
           }
           
           return (
-            <Card key={doc.key} className="hover:shadow-md transition-shadow cursor-pointer">
+            <Card key={doc.key} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4">
-                <div className="flex items-center space-x-3">
-                  {doc.type === 'folder' ? (
-                    <Folder className="h-8 w-8 text-primary" />
-                  ) : (
-                    <File className="h-8 w-8 text-muted-foreground" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">
-                      {doc.name}
-                    </p>
-                    <Badge variant="secondary" className="mt-1">
-                      {doc.type}
-                    </Badge>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3 flex-1 min-w-0">
+                    {doc.type === 'folder' ? (
+                      doc.iconUrl ? (
+                        <img 
+                          src={doc.iconUrl} 
+                          alt="Folder icon" 
+                          className="h-8 w-8 object-cover rounded"
+                          onError={(e) => {
+                            console.error('Failed to load folder icon:', doc.iconUrl);
+                            // Fallback to default folder icon
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                          onLoad={() => {
+                            console.log('Successfully loaded folder icon:', doc.iconUrl);
+                          }}
+                        />
+                      ) : (
+                        <Folder className="h-8 w-8 text-primary" />
+                      )
+                    ) : (
+                      <File className="h-8 w-8 text-muted-foreground" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {doc.name}
+                        </p>
+                        {doc.isBookmarked && (
+                          <BookmarkCheck className="h-4 w-4 text-yellow-500" />
+                        )}
+                      </div>
+                      <Badge variant="secondary" className="mt-1">
+                        {doc.type}
+                      </Badge>
+                    </div>
                   </div>
+                  
+                  {/* Three-dotted menu */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                        <span className="sr-only">Open menu</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBookmark(doc.key, doc.name);
+                        }}
+                      >
+                        {doc.isBookmarked ? (
+                          <>
+                            <BookmarkCheck className="h-4 w-4 mr-2" />
+                            Remove bookmark
+                          </>
+                        ) : (
+                          <>
+                            <Bookmark className="h-4 w-4 mr-2" />
+                            Add bookmark
+                          </>
+                        )}
+                      </DropdownMenuItem>
+                      {user?.role === 'admin' && (
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(doc.key, doc.name);
+                          }}
+                          className="text-destructive focus:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 
                 <Separator className="my-3" />
