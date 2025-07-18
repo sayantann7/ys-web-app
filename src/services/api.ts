@@ -112,6 +112,10 @@ class ApiService {
     return this.request(`/user/comments?documentId=${encodeURIComponent(documentId)}`);
   }
 
+  async getAllComments(): Promise<{ message: string; commentsByDocument: { [documentId: string]: Comment[] } }> {
+    return this.request('/user/comments/all');
+  }
+
   // Recent documents
   async getRecentDocuments(userEmail: string): Promise<{ message: string; recentDocuments: string[] }> {
     return this.request(`/user/recent-documents?userEmail=${encodeURIComponent(userEmail)}`);
