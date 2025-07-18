@@ -235,6 +235,24 @@ class ApiService {
       body: JSON.stringify({ filePath: key }),
     });
   }
+
+  // Bookmark endpoints
+  async getBookmarks(): Promise<{ bookmarks: any[] }> {
+    return this.request('/user/bookmarks');
+  }
+
+  async addBookmark(itemId: string, itemType: string, itemName: string): Promise<{ message: string }> {
+    return this.request('/user/bookmarks', {
+      method: 'POST',
+      body: JSON.stringify({ itemId, itemType, itemName }),
+    });
+  }
+
+  async removeBookmark(itemId: string): Promise<{ message: string }> {
+    return this.request(`/user/bookmarks/${encodeURIComponent(itemId)}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiService = new ApiService();

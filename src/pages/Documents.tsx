@@ -218,9 +218,6 @@ const Documents = () => {
       console.log('Folders type check:', Array.isArray(folders), folders);
       console.log('Files type check:', Array.isArray(files), files);
       
-      // Load bookmark state from localStorage
-      const bookmarks = JSON.parse(localStorage.getItem('documentBookmarks') || '{}');
-      
       const documentItems: DocumentItem[] = [
         ...folders
           .filter(folder => {
@@ -244,6 +241,7 @@ const Documents = () => {
             // Handle both string and object cases with better extraction
             let folderName = '';
             let folderKey = '';
+            let isBookmarked = false;
             
             if (typeof folder === 'string') {
               folderName = folder;
@@ -264,6 +262,9 @@ const Documents = () => {
                          (folder as any)?.Prefix ||
                          (folder as any)?.prefix ||
                          folderName;
+              
+              // Get bookmark status from API response
+              isBookmarked = (folder as any)?.isBookmarked || false;
               
               // If still no valid name found, try to extract from the object
               if (!folderName) {
@@ -295,7 +296,7 @@ const Documents = () => {
               name: formatDisplayName(folderName),
               type: 'folder' as const,
               key: folderKey,
-              isBookmarked: !!bookmarks[folderKey],
+              isBookmarked: isBookmarked,
               iconUrl: undefined // Will be loaded separately
             };
           }),
@@ -306,6 +307,7 @@ const Documents = () => {
           // Handle both string and object cases with better extraction
           let fileName = '';
           let fileKey = '';
+          let isBookmarked = false;
           
           if (typeof file === 'string') {
             fileName = file;
@@ -326,6 +328,9 @@ const Documents = () => {
                      (file as any)?.Prefix ||
                      (file as any)?.prefix ||
                      fileName;
+            
+            // Get bookmark status from API response
+            isBookmarked = (file as any)?.isBookmarked || false;
             
             // If still no valid name found, try to extract from the object
             if (!fileName) {
@@ -357,7 +362,7 @@ const Documents = () => {
             name: formatDisplayName(fileName),
             type: 'file' as const,
             key: fileKey,
-            isBookmarked: !!bookmarks[fileKey],
+            isBookmarked: isBookmarked,
             iconUrl: undefined
           };
         })
@@ -651,20 +656,31 @@ const Documents = () => {
       };
       setDocuments(updatedDocuments);
       
-      // In a real app, you'd make an API call here to persist the bookmark state
-      // For now, we'll just simulate it and store in localStorage
-      const bookmarks = JSON.parse(localStorage.getItem('documentBookmarks') || '{}');
-      if (!isCurrentlyBookmarked) {
-        bookmarks[docKey] = { name: docName, key: docKey, bookmarkedAt: new Date().toISOString() };
-      } else {
-        delete bookmarks[docKey];
+      // Make API call to update bookmark
+      try {
+        if (!isCurrentlyBookmarked) {
+          // Determine item type based on document type
+          const itemType = currentDoc.type === 'folder' ? 'folder' : 'document';
+          await apiService.addBookmark(docKey, itemType, docName);
+        } else {
+          await apiService.removeBookmark(docKey);
+        }
+        
+        toast({
+          title: isCurrentlyBookmarked ? "Removed bookmark" : "Added bookmark",
+          description: `${docName} ${isCurrentlyBookmarked ? 'removed from' : 'added to'} bookmarks`
+        });
+      } catch (apiError) {
+        // Revert the optimistic update if API call fails
+        const revertedDocuments = [...documents];
+        revertedDocuments[docIndex] = {
+          ...currentDoc,
+          isBookmarked: isCurrentlyBookmarked
+        };
+        setDocuments(revertedDocuments);
+        
+        throw apiError;
       }
-      localStorage.setItem('documentBookmarks', JSON.stringify(bookmarks));
-      
-      toast({
-        title: isCurrentlyBookmarked ? "Removed bookmark" : "Added bookmark",
-        description: `${docName} ${isCurrentlyBookmarked ? 'removed from' : 'added to'} bookmarks`
-      });
     } catch (error) {
       console.error('Error toggling bookmark:', error);
       toast({
@@ -689,13 +705,6 @@ const Documents = () => {
       // Update local state only after successful deletion
       const updatedDocuments = documents.filter(doc => doc.key !== docKey);
       setDocuments(updatedDocuments);
-      
-      // Also remove from bookmarks if it was bookmarked
-      const bookmarks = JSON.parse(localStorage.getItem('documentBookmarks') || '{}');
-      if (bookmarks[docKey]) {
-        delete bookmarks[docKey];
-        localStorage.setItem('documentBookmarks', JSON.stringify(bookmarks));
-      }
       
       toast({
         title: "Document deleted",

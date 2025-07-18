@@ -29,9 +29,6 @@ const AppLayout = () => {
         <div className="flex-1 flex flex-col">
           <header className="h-14 flex items-center border-b border-border bg-white px-4">
             <SidebarTrigger />
-            <div className="ml-4">
-              <h1 className="font-semibold text-foreground">Document Repository Admin</h1>
-            </div>
           </header>
           <main className="flex-1 overflow-auto">
             <Routes>
