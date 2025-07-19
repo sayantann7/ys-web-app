@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -9,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
+import { Comment } from '@/types';
 import { 
   Folder, 
   File, 
@@ -25,7 +27,11 @@ import {
   Trash2,
   Bookmark,
   BookmarkCheck,
-  Image
+  Image,
+  MessageSquare,
+  Send,
+  Edit2,
+  Save
 } from 'lucide-react';
 
 interface DocumentItem {
@@ -52,6 +58,19 @@ const Documents = () => {
   } | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
   const [uploadingFolder, setUploadingFolder] = useState(false);
+  
+  // Comments-related state
+  const [showComments, setShowComments] = useState(false);
+  const [selectedDocumentForComments, setSelectedDocumentForComments] = useState<{
+    key: string;
+    name: string;
+  } | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [editingComment, setEditingComment] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [loadingComments, setLoadingComments] = useState(false);
+  
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -720,6 +739,116 @@ const Documents = () => {
     }
   };
 
+  // Comments-related functions
+  const openCommentsModal = async (docKey: string, docName: string) => {
+    setSelectedDocumentForComments({ key: docKey, name: docName });
+    setShowComments(true);
+    await loadCommentsForDocument(docKey);
+  };
+
+  const loadCommentsForDocument = async (documentId: string) => {
+    try {
+      setLoadingComments(true);
+      const response = await apiService.getComments(documentId);
+      setComments(response.comments || []);
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      toast({
+        title: "Error loading comments",
+        description: "Failed to load comments for this document",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const addComment = async () => {
+    if (!newComment.trim() || !selectedDocumentForComments?.key || !user?.email) return;
+    
+    try {
+      const response = await apiService.addComment(user.email, selectedDocumentForComments.key, newComment);
+      
+      // Update local state
+      setComments(prev => [...prev, response.comment]);
+      setNewComment('');
+      
+      toast({
+        title: "Comment added",
+        description: "Your comment has been added successfully"
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to add comment",
+        description: "Could not add your comment",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const startEdit = (comment: Comment) => {
+    setEditingComment(comment.id);
+    setEditText(comment.content);
+  };
+
+  const cancelEdit = () => {
+    setEditingComment(null);
+    setEditText('');
+  };
+
+  const saveEdit = async (commentId: string) => {
+    if (!editText.trim() || !selectedDocumentForComments?.key) return;
+    
+    try {
+      await apiService.updateComment(selectedDocumentForComments.key, editText);
+      
+      // Update local state
+      setComments(prev => prev.map(c => 
+        c.id === commentId ? { ...c, content: editText, updatedAt: new Date().toISOString() } : c
+      ));
+      
+      setEditingComment(null);
+      setEditText('');
+      
+      toast({
+        title: "Comment updated",
+        description: "Your comment has been updated successfully"
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to update comment",
+        description: "Could not update your comment",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const deleteComment = async (comment: Comment) => {
+    if (!selectedDocumentForComments?.key) return;
+    
+    try {
+      await apiService.deleteComment(selectedDocumentForComments.key, comment.content);
+      
+      // Update local state
+      setComments(prev => prev.filter(c => c.id !== comment.id));
+      
+      toast({
+        title: "Comment deleted",
+        description: "Your comment has been deleted successfully"
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to delete comment",
+        description: "Could not delete your comment",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
   const filteredDocuments = Array.isArray(documents) 
     ? documents.filter(doc => {
         // Additional safety checks
@@ -936,6 +1065,15 @@ const Documents = () => {
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
+                          openCommentsModal(doc.key, doc.name);
+                        }}
+                      >
+                        <MessageSquare className="h-4 w-4 mr-2" />
+                        Comments
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
                           handleBookmark(doc.key, doc.name);
                         }}
                       >
@@ -1032,6 +1170,137 @@ const Documents = () => {
       <Dialog open={!!viewingDocument} onOpenChange={() => setViewingDocument(null)}>
         <DialogContent className="max-w-7xl max-h-[90vh] w-[95vw] h-[85vh] p-0">
           {renderDocumentViewer()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Comments Modal */}
+      <Dialog open={showComments} onOpenChange={(open) => {
+        if (!open) {
+          setShowComments(false);
+          setSelectedDocumentForComments(null);
+          setNewComment('');
+          setEditingComment(null);
+          setEditText('');
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              Comments for {selectedDocumentForComments?.name}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Add new comment */}
+            <div className="space-y-2">
+              <Textarea
+                placeholder="Add a comment..."
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                rows={3}
+              />
+              <div className="flex justify-end">
+                <Button 
+                  onClick={addComment} 
+                  disabled={!newComment.trim()}
+                  size="sm"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Add Comment
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Comments list */}
+            {loadingComments ? (
+              <div className="text-center py-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
+                <p className="text-sm text-muted-foreground mt-2">Loading comments...</p>
+              </div>
+            ) : comments.length === 0 ? (
+              <div className="text-center py-8">
+                <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-foreground mb-2">
+                  No comments yet
+                </h3>
+                <p className="text-muted-foreground">
+                  Be the first to comment on this document
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {comments.map((comment) => (
+                  <Card key={comment.id} className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium">{comment.user?.email || 'Unknown User'}</p>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(comment.createdAt)}
+                          </span>
+                          {comment.updatedAt && comment.updatedAt !== comment.createdAt && (
+                            <span className="text-xs text-muted-foreground">(edited)</span>
+                          )}
+                        </div>
+                        {comment.user?.email === user?.email && (
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => startEdit(comment)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteComment(comment)}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {editingComment === comment.id ? (
+                        <div className="space-y-2">
+                          <Textarea
+                            value={editText}
+                            onChange={(e) => setEditText(e.target.value)}
+                            rows={3}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={cancelEdit}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => saveEdit(comment.id)}
+                              disabled={!editText.trim()}
+                            >
+                              <Save className="h-4 w-4 mr-2" />
+                              Save
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm whitespace-pre-wrap">{comment.content}</p>
+                      )}
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

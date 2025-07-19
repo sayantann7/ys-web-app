@@ -24,19 +24,21 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
-  ExternalLink
+  ExternalLink,
+  File
 } from 'lucide-react';
 
+// Extended comment interface for this page
+interface CommentWithDocument extends Comment {
+  documentName: string;
+}
+
 const Comments = () => {
-  const [commentsByDocument, setCommentsByDocument] = useState<{ [documentId: string]: Comment[] }>({});
-  const [expandedDocuments, setExpandedDocuments] = useState<Set<string>>(new Set());
-  const [newComment, setNewComment] = useState('');
-  const [newCommentDocument, setNewCommentDocument] = useState('');
-  const [editingComment, setEditingComment] = useState<string | null>(null);
-  const [editText, setEditText] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [allComments, setAllComments] = useState<CommentWithDocument[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showAddComment, setShowAddComment] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
   const [viewingDocument, setViewingDocument] = useState<{
     name: string;
     key: string;
@@ -54,11 +56,23 @@ const Comments = () => {
     try {
       setLoading(true);
       const response = await apiService.getAllComments();
-      setCommentsByDocument(response.commentsByDocument || {});
       
-      // Expand all documents by default
-      const documentIds = Object.keys(response.commentsByDocument || {});
-      setExpandedDocuments(new Set(documentIds));
+      // Flatten all comments into a single array with document info
+      const commentsArray: CommentWithDocument[] = [];
+      Object.entries(response.commentsByDocument || {}).forEach(([documentId, comments]) => {
+        comments.forEach(comment => {
+          commentsArray.push({
+            ...comment,
+            documentId,
+            documentName: formatDocumentName(documentId)
+          });
+        });
+      });
+      
+      // Sort comments by creation date (newest first)
+      commentsArray.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      setAllComments(commentsArray);
     } catch (error) {
       toast({
         title: "Error loading comments",
@@ -70,87 +84,42 @@ const Comments = () => {
     }
   };
 
-  const addComment = async () => {
-    if (!newComment.trim() || !newCommentDocument.trim() || !user?.email) return;
+  const addReply = async (parentCommentId: string, documentId: string) => {
+    if (!replyText.trim() || !user?.email) return;
     
     try {
-      const response = await apiService.addComment(user.email, newCommentDocument, newComment);
+      const response = await apiService.addComment(user.email, documentId, replyText);
       
-      // Update local state
-      setCommentsByDocument(prev => ({
-        ...prev,
-        [newCommentDocument]: [...(prev[newCommentDocument] || []), response.comment]
-      }));
+      // Add the new reply to the comments list
+      const newReply: CommentWithDocument = {
+        ...response.comment,
+        documentId,
+        documentName: formatDocumentName(documentId)
+      };
       
-      // Expand the document if it's not already expanded
-      setExpandedDocuments(prev => new Set([...prev, newCommentDocument]));
-      
-      setNewComment('');
-      setNewCommentDocument('');
-      setShowAddComment(false);
+      setAllComments(prev => [newReply, ...prev]);
+      setReplyText('');
+      setReplyingTo(null);
       
       toast({
-        title: "Comment added",
-        description: "Your comment has been added successfully"
+        title: "Reply added",
+        description: "Your reply has been added successfully"
       });
     } catch (error) {
       toast({
-        title: "Failed to add comment",
-        description: "Could not add your comment",
+        title: "Failed to add reply",
+        description: "Could not add your reply",
         variant: "destructive"
       });
     }
   };
 
-  const startEdit = (comment: Comment) => {
-    setEditingComment(comment.id);
-    setEditText(comment.content);
-  };
-
-  const cancelEdit = () => {
-    setEditingComment(null);
-    setEditText('');
-  };
-
-  const saveEdit = async (commentId: string, documentId: string) => {
-    if (!editText.trim()) return;
-    
+  const deleteComment = async (comment: CommentWithDocument) => {
     try {
-      await apiService.updateComment(documentId, editText);
+      await apiService.deleteComment(comment.documentId, comment.content);
       
       // Update local state
-      setCommentsByDocument(prev => ({
-        ...prev,
-        [documentId]: prev[documentId].map(c => 
-          c.id === commentId ? { ...c, content: editText, updatedAt: new Date().toISOString() } : c
-        )
-      }));
-      
-      setEditingComment(null);
-      setEditText('');
-      
-      toast({
-        title: "Comment updated",
-        description: "Your comment has been updated successfully"
-      });
-    } catch (error) {
-      toast({
-        title: "Failed to update comment",
-        description: "Could not update your comment",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const deleteComment = async (comment: Comment, documentId: string) => {
-    try {
-      await apiService.deleteComment(documentId, comment.content);
-      
-      // Update local state
-      setCommentsByDocument(prev => ({
-        ...prev,
-        [documentId]: prev[documentId].filter(c => c.id !== comment.id)
-      }));
+      setAllComments(prev => prev.filter(c => c.id !== comment.id));
       
       toast({
         title: "Comment deleted",
@@ -165,18 +134,6 @@ const Comments = () => {
     }
   };
 
-  const toggleDocument = (documentId: string) => {
-    setExpandedDocuments(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(documentId)) {
-        newSet.delete(documentId);
-      } else {
-        newSet.add(documentId);
-      }
-      return newSet;
-    });
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
@@ -184,6 +141,23 @@ const Comments = () => {
   const formatDocumentName = (documentId: string) => {
     const parts = documentId.split('/');
     return parts[parts.length - 1] || documentId;
+  };
+
+  const getDocumentType = (documentId: string): 'file' | 'folder' => {
+    // If it ends with /, it's likely a folder
+    if (documentId.endsWith('/')) return 'folder';
+    
+    // If it has a file extension, it's likely a file
+    const fileName = formatDocumentName(documentId);
+    if (fileName.includes('.')) return 'file';
+    
+    // Default to file
+    return 'file';
+  };
+
+  const getDocumentIcon = (documentId: string) => {
+    const type = getDocumentType(documentId);
+    return type === 'folder' ? <Folder className="h-5 w-5 text-primary" /> : <File className="h-5 w-5 text-muted-foreground" />;
   };
 
   const handleViewDocument = async (documentId: string) => {
@@ -315,21 +289,13 @@ const Comments = () => {
   };
 
   // Filter comments based on search term
-  const filteredCommentsByDocument = Object.entries(commentsByDocument).reduce((acc, [documentId, comments]) => {
-    const filteredComments = comments.filter(comment =>
-      comment.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      comment.user.fullname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      documentId.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    
-    if (filteredComments.length > 0) {
-      acc[documentId] = filteredComments;
-    }
-    
-    return acc;
-  }, {} as { [documentId: string]: Comment[] });
+  const filteredComments = allComments.filter(comment =>
+    comment.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    comment.user.fullname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    comment.documentName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
-  const totalComments = Object.values(commentsByDocument).reduce((sum, comments) => sum + comments.length, 0);
+  const totalComments = allComments.length;
 
   if (loading) {
     return (
@@ -344,11 +310,11 @@ const Comments = () => {
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-foreground mb-2">Comments</h1>
         <p className="text-muted-foreground">
-          Manage document comments and discussions ({totalComments} comments across {Object.keys(commentsByDocument).length} documents)
+          Manage document comments and discussions ({totalComments} total comments)
         </p>
       </div>
 
-      {/* Search and Add Comment Actions */}
+      {/* Search */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
         <Card className="flex-1">
           <CardContent className="p-4">
@@ -363,66 +329,11 @@ const Comments = () => {
             </div>
           </CardContent>
         </Card>
-        
-        <Button
-          onClick={() => setShowAddComment(!showAddComment)}
-          className="sm:w-auto"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Comment
-        </Button>
       </div>
 
-      {/* Add New Comment Form */}
-      {showAddComment && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Plus className="h-5 w-5 mr-2" />
-              Add New Comment
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Input
-                placeholder="Document ID (e.g., folder/filename.pdf)"
-                value={newCommentDocument}
-                onChange={(e) => setNewCommentDocument(e.target.value)}
-              />
-              <Textarea
-                placeholder="Write your comment..."
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                rows={3}
-              />
-              <div className="flex space-x-2">
-                <Button 
-                  onClick={addComment} 
-                  disabled={!newComment.trim() || !newCommentDocument.trim() || !user?.email}
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Post Comment
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddComment(false);
-                    setNewComment('');
-                    setNewCommentDocument('');
-                  }}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Comments by Document */}
+      {/* Comments List */}
       <div className="space-y-4">
-        {Object.keys(filteredCommentsByDocument).length === 0 ? (
+        {filteredComments.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
               <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -431,143 +342,130 @@ const Comments = () => {
               </h3>
               <p className="text-muted-foreground">
                 {totalComments === 0 
-                  ? "Be the first to comment on a document"
+                  ? "Comments will appear here when users start commenting on documents"
                   : `No comments match "${searchTerm}"`
                 }
               </p>
             </CardContent>
           </Card>
         ) : (
-          Object.entries(filteredCommentsByDocument).map(([documentId, comments]) => (
-            <Card key={documentId}>
-              <CardHeader 
-                className="cursor-pointer hover:bg-muted/50 transition-colors"
-                onClick={() => toggleDocument(documentId)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    {expandedDocuments.has(documentId) ? (
-                      <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                    )}
-                    <FileText className="h-5 w-5 text-primary" />
-                    <div>
-                      <CardTitle className="text-lg">{formatDocumentName(documentId)}</CardTitle>
-                      <CardDescription className="text-sm text-muted-foreground">
-                        {documentId} • {comments.length} comment{comments.length !== 1 ? 's' : ''}
-                      </CardDescription>
+          filteredComments.map((comment) => (
+            <Card key={comment.id}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
+                      <span className="text-sm font-medium text-primary-foreground">
+                        {comment.user?.fullname?.charAt(0).toUpperCase() || 'U'}
+                      </span>
                     </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleViewDocument(documentId);
-                      }}
-                      disabled={documentLoading}
-                    >
-                      <Eye className="h-4 w-4 mr-1" />
-                      View
-                    </Button>
-                    <Badge variant="secondary">
-                      {comments.length}
-                    </Badge>
-                  </div>
-                </div>
-              </CardHeader>
-              
-              {expandedDocuments.has(documentId) && (
-                <CardContent>
-                  <div className="space-y-4">
-                    {comments.map((comment) => (
-                      <div key={comment.id} className="border rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                              <span className="text-sm font-medium text-primary-foreground">
-                                {comment.user.fullname.charAt(0).toUpperCase()}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">
-                                {comment.user.fullname}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {comment.user.email}
-                              </p>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {formatDate(comment.createdAt)}
-                            </Badge>
-                            {comment.updatedAt !== comment.createdAt && (
-                              <Badge variant="outline" className="text-xs">
-                                Edited
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-
-                        {editingComment === comment.id ? (
-                          <div className="space-y-3">
-                            <Textarea
-                              value={editText}
-                              onChange={(e) => setEditText(e.target.value)}
-                              rows={3}
-                            />
-                            <div className="flex space-x-2">
-                              <Button size="sm" onClick={() => saveEdit(comment.id, documentId)}>
-                                <Save className="h-4 w-4 mr-1" />
-                                Save
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={cancelEdit}>
-                                <X className="h-4 w-4 mr-1" />
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            <p className="text-foreground mb-3 whitespace-pre-wrap">
-                              {comment.content}
-                            </p>
-                            
-                            {user?.email === comment.user.email && (
-                              <>
-                                <Separator className="mb-3" />
-                                <div className="flex space-x-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => startEdit(comment)}
-                                  >
-                                    <Edit2 className="h-4 w-4 mr-1" />
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => deleteComment(comment, documentId)}
-                                    className="text-destructive hover:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-1" />
-                                    Delete
-                                  </Button>
-                                </div>
-                              </>
-                            )}
-                          </>
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <p className="font-medium text-foreground">
+                          {comment.user?.fullname || 'Unknown User'}
+                        </p>
+                        <Badge variant="secondary" className="text-xs">
+                          {formatDate(comment.createdAt)}
+                        </Badge>
+                        {comment.updatedAt !== comment.createdAt && (
+                          <Badge variant="outline" className="text-xs">
+                            Edited
+                          </Badge>
                         )}
                       </div>
-                    ))}
+                      <div className="flex items-center space-x-2 mb-3">
+                        {getDocumentIcon(comment.documentId)}
+                        <p className="text-sm text-muted-foreground">
+                          Commented on: <span className="font-medium">{comment.documentName}</span>
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </CardContent>
-              )}
+                  
+                  <div className="flex items-center space-x-2">
+                    {getDocumentType(comment.documentId) === 'file' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleViewDocument(comment.documentId)}
+                        disabled={documentLoading}
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        View Document
+                      </Button>
+                    )}
+                    {user?.email === comment.user?.email && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deleteComment(comment)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="ml-13">
+                  <p className="text-foreground mb-4 whitespace-pre-wrap">
+                    {comment.content}
+                  </p>
+                  
+                  {replyingTo === comment.id ? (
+                    <div className="mt-4 space-y-3 bg-muted/50 p-4 rounded-lg">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center">
+                          <span className="text-xs font-medium text-primary-foreground">
+                            {user?.fullname?.charAt(0).toUpperCase() || 'U'}
+                          </span>
+                        </div>
+                        <span className="text-sm font-medium">Reply to {comment.user?.fullname}</span>
+                      </div>
+                      <Textarea
+                        placeholder="Write your reply..."
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        rows={3}
+                        className="bg-background"
+                      />
+                      <div className="flex space-x-2">
+                        <Button 
+                          size="sm"
+                          onClick={() => addReply(comment.id, comment.documentId)}
+                          disabled={!replyText.trim() || !user?.email}
+                        >
+                          <Send className="h-4 w-4 mr-1" />
+                          Post Reply
+                        </Button>
+                        <Button 
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setReplyingTo(null);
+                            setReplyText('');
+                          }}
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setReplyingTo(comment.id)}
+                      >
+                        <MessageSquare className="h-4 w-4 mr-1" />
+                        Reply
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
             </Card>
           ))
         )}
