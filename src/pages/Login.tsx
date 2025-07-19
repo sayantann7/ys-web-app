@@ -49,7 +49,7 @@ const Login: React.FC = () => {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
         <img src='/logo.png' className="mx-auto w-100 rounded-lg flex items-center justify-center mb-4" />
-          <CardTitle className="text-2xl font-bold text-foreground">Admin Portal</CardTitle>
+          <CardTitle className="text-2xl font-bold text-foreground">Sales Repository</CardTitle>
           <CardDescription>
             Sign in to access the document repository
           </CardDescription>
