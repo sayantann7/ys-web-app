@@ -63,6 +63,13 @@ class ApiService {
     });
   }
 
+  async changePassword(email: string, currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    return this.request('/user/changePassword', {
+      method: 'PUT',
+      body: JSON.stringify({ email, currentPassword, newPassword }),
+    });
+  }
+
   async documentViewed(userEmail: string, documentId: string): Promise<{ message: string; user: User }> {
     return this.request('/user/documentViewed', {
       method: 'POST',

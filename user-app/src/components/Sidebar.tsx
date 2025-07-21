@@ -18,6 +18,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { ChangePassword } from './ChangePassword';
 
 const navigationItems = [
   { title: 'Documents', url: '/documents', icon: FileText },
@@ -99,13 +100,16 @@ export function AppSidebar() {
                 </div>
               )}
             </div>
-            <button
-              onClick={signOut}
-              className="w-full flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
-            >
-              <LogOut className="h-4 w-4" />
-              {!collapsed && <span>Sign Out</span>}
-            </button>
+            <div className="space-y-1">
+              <ChangePassword />
+              <button
+                onClick={signOut}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+              >
+                <LogOut className="h-4 w-4" />
+                {!collapsed && <span>Sign Out</span>}
+              </button>
+            </div>
           </div>
         )}
       </SidebarContent>

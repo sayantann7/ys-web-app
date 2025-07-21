@@ -22,6 +22,14 @@ export interface Comment {
   user?: User;
 }
 
+export interface WeeklyMetrics {
+  timeSpent: number;
+  documentsViewed: number;
+  signIns: number;
+  startDate: string;
+  endDate: string;
+}
+
 
 export interface AuthResponse {
   message: string;
