@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,10 +19,10 @@ const Users: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+    if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls') && !file.name.endsWith('.csv')) {
       toast({
         title: 'Invalid file type',
-        description: 'Please upload an Excel file (.xlsx or .xls)',
+        description: 'Please upload an Excel file (.xlsx, .xls) or CSV file (.csv)',
         variant: 'destructive',
       });
       return;
@@ -54,8 +53,8 @@ const Users: React.FC = () => {
   };
 
   const downloadTemplate = () => {
-    // Create a sample Excel template
-    const csvContent = "fullname,email\nJohn Doe,john@example.com\nJane Smith,jane@example.com";
+    // Create a sample Excel template with ad-id column
+    const csvContent = "fullname,email,ad-id\nJohn Doe,john@example.com,john123\nJane Smith,jane@example.com,jane456";
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -82,22 +81,22 @@ const Users: React.FC = () => {
               Bulk User Import
             </CardTitle>
             <CardDescription>
-              Upload an Excel file to import users in bulk. Existing users will be updated, and users not in the file will be removed.
+              Upload an Excel or CSV file to import users in bulk. Existing users will be updated, and users not in the file will be removed.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="userFile">Excel File</Label>
+              <Label htmlFor="userFile">Excel/CSV File</Label>
               <Input
                 id="userFile"
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.csv"
                 onChange={handleFileUpload}
                 disabled={importing}
               />
               <p className="text-xs text-muted-foreground">
-                File should contain columns: fullname, email
+                File must contain columns: <strong>fullname</strong>, <strong>email</strong>, and <strong>ad-id</strong>
               </p>
             </div>
 
@@ -115,7 +114,7 @@ const Users: React.FC = () => {
                 ) : (
                   <>
                     <Upload className="w-4 h-4 mr-2" />
-                    Upload Excel File
+                    Upload Excel/CSV File
                   </>
                 )}
               </Button>
@@ -133,8 +132,8 @@ const Users: React.FC = () => {
                   <ul className="list-disc list-inside space-y-1">
                     <li>Users not included in the file will be automatically removed</li>
                     <li>Email addresses must be unique and valid</li>
-                    <li>Default password will be generated for new users</li>
-                    <li>Existing users will receive email notifications</li>
+                    <li><strong>AD ID is required</strong> and will be used as the initial password for new users</li>
+                    <li>All three columns (fullname, email, ad-id) are mandatory for each user</li>
                   </ul>
                 </div>
               </div>
