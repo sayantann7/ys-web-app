@@ -17,10 +17,8 @@ import {
   File, 
   Upload, 
   Download, 
-  Plus, 
   ArrowLeft,
   Search,
-  FolderPlus,
   Eye,
   X,
   ExternalLink,
@@ -48,16 +46,12 @@ const Documents = () => {
   const [pathSegments, setPathSegments] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [newFolderName, setNewFolderName] = useState('');
-  const [newFolderIcon, setNewFolderIcon] = useState<File | null>(null);
-  const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<{
     name: string;
     key: string;
     url: string;
   } | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
-  const [uploadingFolder, setUploadingFolder] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   
   // Comments-related state
@@ -600,65 +594,6 @@ const Documents = () => {
     );
   };
 
-  const handleUpload = async (fileKey: string) => {
-    try {
-      const response = await apiService.getUploadUrl(fileKey);
-      
-      toast({
-        title: "Upload URL generated",
-        description: "Copy the URL to upload your file",
-      });
-      
-      // In a real implementation, you'd show a file picker and upload interface
-      console.log('Upload URL:', response.url);
-    } catch (error) {
-      toast({
-        title: "Upload failed",
-        description: "Failed to generate upload link",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const createFolder = async () => {
-    if (!newFolderName.trim()) return;
-    
-    setUploadingFolder(true);
-    
-    try {
-      // Create the folder first
-      await apiService.createFolder(newFolderName, currentPath || undefined);
-      
-      // If an icon was selected, upload it
-      if (newFolderIcon) {
-        const folderPath = currentPath ? `${currentPath}/${newFolderName}/` : `${newFolderName}/`;
-        console.log('Creating folder with path for icon:', folderPath);
-        await apiService.uploadFolderIcon(newFolderIcon, folderPath);
-      }
-      
-      setNewFolderName('');
-      setNewFolderIcon(null);
-      setShowCreateFolder(false);
-      
-      // Reload documents to include the new folder
-      await loadDocuments();
-      
-      toast({
-        title: "Folder created",
-        description: `Successfully created folder "${newFolderName}"${newFolderIcon ? ' with icon' : ''}`
-      });
-    } catch (error) {
-      console.error('Error creating folder:', error);
-      toast({
-        title: "Failed to create folder",
-        description: "Could not create the folder",
-        variant: "destructive"
-      });
-    } finally {
-      setUploadingFolder(false);
-    }
-  };
-
   const handleBookmark = async (docKey: string, docName: string) => {
     try {
       // Find the document in the current state
@@ -892,22 +827,17 @@ const Documents = () => {
             </div>
             
             <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowCreateFolder(!showCreateFolder)}
-              >
-                <FolderPlus className="h-4 w-4 mr-1" />
-                New Folder
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowUploadModal(true)}
-              >
-                <Upload className="h-4 w-4 mr-1" />
-                Upload Files
-              </Button>
+              {/* Only show upload button for admin users */}
+              {user?.role === 'admin' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowUploadModal(true)}
+                >
+                  <Upload className="h-4 w-4 mr-1" />
+                  Upload Files
+                </Button>
+              )}
               {/* Debug button for icon refresh */}
               <Button
                 variant="ghost"
@@ -919,53 +849,6 @@ const Documents = () => {
               </Button>
             </div>
           </div>
-          
-          {showCreateFolder && (
-            <div className="mt-4 space-y-3">
-              <div className="flex items-center space-x-2">
-                <Input
-                  placeholder="Folder name"
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  className="max-w-xs"
-                />
-                <Button onClick={createFolder} size="sm" disabled={uploadingFolder}>
-                  {uploadingFolder ? 'Creating...' : 'Create'}
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => {
-                    setShowCreateFolder(false);
-                    setNewFolderName('');
-                    setNewFolderIcon(null);
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <label className="text-sm font-medium text-muted-foreground">
-                  Optional: Choose folder icon
-                </label>
-                <Input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    setNewFolderIcon(file || null);
-                  }}
-                  className="max-w-xs"
-                />
-                {newFolderIcon && (
-                  <span className="text-sm text-green-600">
-                    Icon selected: {newFolderIcon.name}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -1273,13 +1156,15 @@ const Documents = () => {
         </DialogContent>
       </Dialog>
 
-      {/* File Upload Modal */}
-      <FileUploadModal
-        open={showUploadModal}
-        onClose={() => setShowUploadModal(false)}
-        currentPath={currentPath}
-        onUploadComplete={loadDocuments}
-      />
+      {/* File Upload Modal - Only for admin users */}
+      {user?.role === 'admin' && (
+        <FileUploadModal
+          open={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          currentPath={currentPath}
+          onUploadComplete={loadDocuments}
+        />
+      )}
     </div>
   );
 };
