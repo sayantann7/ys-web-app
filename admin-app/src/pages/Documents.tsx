@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiService } from '@/services/api';
 import { useAuth } from '@/context/AuthContext';
 import { Comment } from '@/types';
+import FileUploadModal from '@/components/upload/FileUploadModal';
 import { 
   Folder, 
   File, 
@@ -58,6 +59,7 @@ const Documents = () => {
   } | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
   const [uploadingFolder, setUploadingFolder] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   
   // Comments-related state
   const [showComments, setShowComments] = useState(false);
@@ -927,6 +929,14 @@ const Documents = () => {
                 <FolderPlus className="h-4 w-4 mr-1" />
                 New Folder
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowUploadModal(true)}
+              >
+                <Upload className="h-4 w-4 mr-1" />
+                Upload Files
+              </Button>
               {/* Debug button for icon refresh */}
               <Button
                 variant="ghost"
@@ -1301,6 +1311,14 @@ const Documents = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* File Upload Modal */}
+      <FileUploadModal
+        open={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        currentPath={currentPath}
+        onUploadComplete={loadDocuments}
+      />
     </div>
   );
 };
