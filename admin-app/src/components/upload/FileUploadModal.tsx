@@ -98,14 +98,17 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
         const key = `${prefix}${file.name}`;
 
         // Get signed URL for file upload
-        const { url: signedUrl } = await apiService.getUploadUrl(key);
+  const { url: signedUrl } = await apiService.getUploadUrl(key);
+  // Remove accidental double slashes before query params (S3 rejects origin preflight sometimes when malformed path)
+  const cleanedUrl = signedUrl.replace('amazonaws.com//', 'amazonaws.com/');
         
         // Upload the file
-        const uploadResponse = await fetch(signedUrl, {
+    const uploadResponse = await fetch(cleanedUrl, {
           method: 'PUT',
           body: file,
           headers: {
             'Content-Type': file.type || 'application/octet-stream',
+      // Explicitly allow CORS preflight success with standard headers only; avoid custom headers here.
           },
         });
 
@@ -117,11 +120,11 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
         if (customIcon) {
           try {
             const extension = customIcon.name.split('.').pop()?.toLowerCase() || 'jpeg';
-            const iconResponse = await fetch('/api/icons/upload', {
+      const iconResponse = await fetch('/api/icons/upload', {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
               },
               body: JSON.stringify({ 
                 itemPath: key, 
@@ -131,7 +134,8 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
             
             const { uploadUrl } = await iconResponse.json();
             
-            await fetch(uploadUrl, {
+            const cleanedIconUrl = uploadUrl.replace('amazonaws.com//', 'amazonaws.com/');
+            await fetch(cleanedIconUrl, {
               method: 'PUT',
               body: customIcon,
               headers: {
@@ -153,11 +157,11 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
           const folderPath = currentPath || 'Root';
           const fileNames = selectedFiles.map(f => f.file.name).join(', ');
           
-          await fetch('/api/notifications/upload', {
+      await fetch('/api/notifications/upload', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
             },
             body: JSON.stringify({
               fileName: fileNames,

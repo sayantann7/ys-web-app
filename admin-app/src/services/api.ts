@@ -1,7 +1,7 @@
 
 import { AuthResponse, User, Comment, WeeklyMetrics, ImportResults } from '@/types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_BASE = "https://ysl-sales-repo.sayantan.space";
 
 class ApiService {
   private token: string | null = null;
@@ -140,13 +140,102 @@ class ApiService {
     const formData = new FormData();
     formData.append('file', file);
     
-    return this.request('/admin/users/import', {
+    // Don't set Content-Type header for FormData - let browser set it with boundary
+    const url = `${API_BASE}/admin/users/import`;
+    const config: RequestInit = {
       method: 'POST',
       headers: {
         ...(this.token && { Authorization: `Bearer ${this.token}` }),
       },
       body: formData,
+    };
+
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Import failed');
+    }
+
+    return response.json();
+  }
+
+  // Admin user metrics (cursor pagination & filtering)
+  async getUsersMetrics(params: {
+    cursor?: string | null;
+    limit?: number;
+    search?: string;
+    activity?: 'all' | 'active' | 'inactive';
+  }): Promise<{
+    users: Array<User & { status?: string }>;
+    nextCursor: string | null;
+    hasNextPage: boolean;
+    total: number;
+    activeCount: number;
+    inactiveCount: number;
+  }> {
+    const query = new URLSearchParams();
+    if (params.cursor) query.set('cursor', params.cursor);
+    if (params.limit) query.set('limit', String(params.limit));
+    if (params.search) query.set('q', params.search); // backend expects 'q'
+    if (params.activity && params.activity !== 'all') query.set('activity', params.activity);
+    // Endpoint lives under /user router
+    const raw: any = await this.request(`/user/admin/users-metrics?${query.toString()}`);
+    const pageInfo = raw.pageInfo || {};
+    const users: Array<User & { status?: string }> = (raw.users || []).map((u: any) => {
+      const lastSignInDate = u.lastSignIn && u.lastSignIn !== 'Never' ? new Date(u.lastSignIn) : null;
+      const daysInactive = lastSignInDate ? Math.floor((Date.now() - lastSignInDate.getTime()) / (1000*60*60*24)) : 999;
+      const status = (u.numberOfSignIns || 0) > 0 && daysInactive <= 7 ? 'active' : 'inactive';
+      return { ...u, status };
     });
+    return {
+      users,
+      nextCursor: pageInfo.nextCursor || null,
+      hasNextPage: !!pageInfo.hasNextPage,
+      total: raw.overallMetrics?.totalUsers || users.length,
+      activeCount: raw.overallMetrics?.activeUsers || 0,
+      inactiveCount: raw.overallMetrics?.inactiveUsers || 0
+    };
+  }
+
+  // Stream / download users export (CSV)
+  async exportUsers(options: { scope: 'all' | 'active' | 'inactive' | 'selected'; selectedEmails?: string[]; format?: 'csv' | 'xlsx'; onProgress?: (receivedBytes: number) => void }): Promise<Blob> {
+    const { scope, selectedEmails = [], format = 'csv', onProgress } = options;
+    if (scope === 'selected') {
+      // Client-side CSV for selected users (lightweight fallback since backend has no selected scope)
+      const header = 'Email\n';
+      const rows = selectedEmails.map(e => e).join('\n');
+      return new Blob([header + rows], { type: 'text/csv' });
+    }
+    const activity = scope; // maps directly (all|active|inactive)
+    const url = `${API_BASE}/user/admin/users-export?activity=${activity}&format=${format}`;
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...(this.token && { Authorization: `Bearer ${this.token}` })
+      }
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      throw new Error(t || 'Export failed');
+    }
+    if (!resp.body || !onProgress) {
+      return await resp.blob();
+    }
+    const reader = resp.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.length;
+        onProgress(received);
+      }
+    }
+    const blobParts: BlobPart[] = chunks.map(c => new Uint8Array(c));
+    return new Blob(blobParts, { type: format === 'xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv' });
   }
 
   // File operations
