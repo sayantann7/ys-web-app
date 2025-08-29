@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 4500,
+  // Allow external access via specified domain
+  allowedHosts: ["ysl-admin.sayantan.space"],
   },
   plugins: [
     react(),
