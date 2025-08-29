@@ -10,6 +10,7 @@ export interface User {
   timeSpent: number;
   documentsViewed: number;
   recentDocs: string[];
+  mustChangePassword?: boolean;
 }
 
 export interface Comment {

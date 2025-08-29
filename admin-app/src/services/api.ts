@@ -63,7 +63,7 @@ class ApiService {
     });
   }
 
-  async changePassword(email: string, currentPassword: string, newPassword: string): Promise<{ message: string }> {
+  async changePassword(email: string, currentPassword: string, newPassword: string): Promise<{ message: string; mustChangePassword?: boolean }> {
     return this.request('/user/changePassword', {
       method: 'PUT',
       body: JSON.stringify({ email, currentPassword, newPassword }),
@@ -257,13 +257,7 @@ class ApiService {
     console.log('uploadFolderIcon called with:', { fileName: file.name, folderPath });
     
     // First, get the upload URL from the backend
-    const uploadResponse = await this.request<{ uploadUrl: string }>('/api/icons/upload', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        itemPath: folderPath, 
-        iconType: file.type.includes('png') ? 'png' : 'jpeg' 
-      }),
-    });
+  const uploadResponse = await this.getIconUploadUrl(folderPath, file.type.includes('png') ? 'png' : 'jpeg');
     
     console.log('Upload URL response:', uploadResponse);
     
@@ -293,6 +287,21 @@ class ApiService {
       message: 'Icon uploaded successfully', 
       iconUrl: '' // Will be populated when getFolderIcon is called
     };
+  }
+
+  // Generic icon upload URL fetcher (ensures correct API host)
+  async getIconUploadUrl(itemPath: string, iconType: string): Promise<{ uploadUrl: string }> {
+    return this.request('/api/icons/upload', {
+      method: 'POST',
+      body: JSON.stringify({ itemPath, iconType })
+    });
+  }
+
+  async sendUploadNotification(fileName: string, folderPath: string): Promise<void> {
+    await this.request('/api/notifications/upload', {
+      method: 'POST',
+      body: JSON.stringify({ fileName, folderPath })
+    });
   }
 
   async getFolderIcon(folderPath: string): Promise<{ iconUrl?: string }> {

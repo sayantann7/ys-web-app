@@ -118,33 +118,15 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
         if (customIcon) {
           try {
             const extension = customIcon.name.split('.').pop()?.toLowerCase() || 'jpeg';
-      const iconResponse = await fetch('/api/icons/upload', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-              },
-              body: JSON.stringify({ 
-                itemPath: key, 
-                iconType: extension 
-              }),
-            });
-            
-            const { uploadUrl } = await iconResponse.json();
-            
-            const cleanedIconUrl = uploadUrl.replace('amazonaws.com//', 'amazonaws.com/');
-            await fetch(cleanedIconUrl, {
+            const { uploadUrl } = await apiService.getIconUploadUrl(key, extension);
+            await fetch(uploadUrl.replace('amazonaws.com//', 'amazonaws.com/'), {
               method: 'PUT',
               body: customIcon,
-              headers: {
-                'Content-Type': customIcon.type,
-              },
+              headers: { 'Content-Type': customIcon.type },
             });
-            
             console.log('✅ File icon uploaded successfully for:', file.name);
           } catch (iconError) {
             console.error('Failed to upload icon for file:', file.name, iconError);
-            // Continue with file upload even if icon fails
           }
         }
       }
@@ -155,17 +137,11 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
           const folderPath = currentPath || 'Root';
           const fileNames = selectedFiles.map(f => f.file.name).join(', ');
           
-      await fetch('/api/notifications/upload', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-            },
-            body: JSON.stringify({
-              fileName: fileNames,
-              folderPath,
-            }),
-          });
+      try {
+        await apiService.sendUploadNotification(fileNames, folderPath);
+      } catch (e) {
+        console.warn('Notification request failed (continuing):', e);
+      }
           
           console.log('Upload notification sent successfully');
         } catch (notificationError) {

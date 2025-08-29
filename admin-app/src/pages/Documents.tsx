@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -58,6 +58,29 @@ const Documents = () => {
     url: string;
   } | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
+  // For folder icon change
+  const [changingIconFor, setChangingIconFor] = useState<string|null>(null);
+  const iconInputRef = useRef<HTMLInputElement>(null);
+  // Handle icon file selection and upload for a folder
+  const handleChangeFolderIcon = async (folderKey: string, file: File) => {
+    if (!file) return;
+    const extension = file.name.split('.').pop()?.toLowerCase() || 'jpeg';
+    try {
+      // Get upload URL for icon via centralized API service (ensures correct host)
+      const { uploadUrl } = await apiService.getIconUploadUrl(folderKey, extension);
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+      toast({ title: 'Icon updated', description: 'Folder icon changed successfully.' });
+      // Refresh folder icons
+      setTimeout(()=>loadDocuments(), 500);
+    } catch (err) {
+      toast({ title: 'Failed to update icon', description: 'Could not upload icon', variant: 'destructive' });
+    }
+    setChangingIconFor(null);
+  };
   const [uploadingFolder, setUploadingFolder] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   
@@ -1099,6 +1122,18 @@ const Documents = () => {
                           </>
                         )}
                       </DropdownMenuItem>
+                      {doc.type === 'folder' && !doc.iconUrl && (
+                        <DropdownMenuItem
+                          onClick={e => {
+                            e.stopPropagation();
+                            setChangingIconFor(doc.key);
+                            setTimeout(() => iconInputRef.current?.click(), 100);
+                          }}
+                        >
+                          <Image className="h-4 w-4 mr-2" />
+                          Add Icon
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1111,6 +1146,20 @@ const Documents = () => {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  {/* Hidden file input for icon upload */}
+                  {changingIconFor === doc.key && (
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={iconInputRef}
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) handleChangeFolderIcon(doc.key, file);
+                      }}
+                      onClick={e => { (e.target as HTMLInputElement).value = ''; }}
+                    />
+                  )}
                 </div>
                 
                 <Separator className="my-3" />
