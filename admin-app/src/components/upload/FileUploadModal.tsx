@@ -98,12 +98,10 @@ const FileUploadModal: React.FC<FileUploadModalProps> = ({
         const key = `${prefix}${file.name}`;
 
         // Get signed URL for file upload
-  const { url: signedUrl } = await apiService.getUploadUrl(key);
-  // Remove accidental double slashes before query params (S3 rejects origin preflight sometimes when malformed path)
-  const cleanedUrl = signedUrl.replace('amazonaws.com//', 'amazonaws.com/');
+  const { url: signedUrl } = await apiService.getUploadUrl(key, file.type || 'application/octet-stream');
         
         // Upload the file
-    const uploadResponse = await fetch(cleanedUrl, {
+  const uploadResponse = await fetch(signedUrl, {
           method: 'PUT',
           body: file,
           headers: {

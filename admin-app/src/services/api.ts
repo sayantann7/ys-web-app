@@ -322,10 +322,10 @@ class ApiService {
     });
   }
 
-  async getUploadUrl(key: string): Promise<{ url: string }> {
+  async getUploadUrl(key: string, contentType?: string): Promise<{ url: string }> {
     return this.request('/api/files/upload', {
       method: 'POST',
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, contentType }),
     });
   }
 
